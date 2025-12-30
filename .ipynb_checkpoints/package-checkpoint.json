@@ -1,0 +1,30 @@
+{
+  "name": "language-mirror-gemini",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@google-cloud/speech": "^7.2.1",
+    "@google-cloud/translate": "^9.3.0",
+    "@hono/node-server": "^1.19.7",
+    "dotenv": "^17.2.3",
+    "google-auth-library": "^10.5.0",
+    "hono": "^4.11.3",
+    "node-fetch": "^3.3.2",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
