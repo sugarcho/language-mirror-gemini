@@ -16,7 +16,11 @@ type TurnAudioResponse = TurnTextResponse & {
 };
 
 // API base auto follows the page hostname (works for VM / LAN access)
-const API_BASE = `${window.location.protocol}//${window.location.hostname}:3000`;
+const API_BASE = import.meta.env.VITE_API_BASE as string;
+
+if (!API_BASE) {
+  console.error("Missing VITE_API_BASE. Set it in Vercel Environment Variables.");
+}
 
 // UI options
 const TARGET_LANG_OPTIONS: Array<{ code: string; label: string; defaultStt: string }> = [
