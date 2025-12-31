@@ -15,113 +15,149 @@ type TurnAudioResponse = TurnTextResponse & {
   subtitle_native: string;
 };
 
-// API base auto follows the page hostname
-const API_BASE = import.meta.env.VITE_API_BASE as string;
+type ChatMsg = {
+  role: "user" | "assistant";
+  text: string;
+};
 
-if (!API_BASE) {
-  console.error("Missing VITE_API_BASE. Set it in Vercel Environment Variables.");
-}
+const API_BASE = (import.meta.env.VITE_API_BASE as string) || "";
 
-// UI options
-const TARGET_LANG_OPTIONS: Array<{ code: string; label: string; defaultStt: string }> = [
-  { code: "ja", label: "Japanese (ja)", defaultStt: "ja-JP" },
-  { code: "en", label: "English (en)", defaultStt: "en-US" },
-  { code: "it", label: "Italian (it)", defaultStt: "it-IT" },
-  { code: "ko", label: "Korean (ko)", defaultStt: "ko-KR" },
-  { code: "zh", label: "Chinese (zh)", defaultStt: "cmn-Hans-CN" },
-  { code: "fr", label: "French (fr)", defaultStt: "fr-FR" },
-  { code: "de", label: "German (de)", defaultStt: "de-DE" },
-  { code: "es", label: "Spanish (es)", defaultStt: "es-ES" },
+const LANG_OPTIONS = [
+  // Tutor target language (Gemini hint)
+  { label: "Japanese (ja)", value: "ja" },
+  { label: "English (en)", value: "en" },
+  { label: "Italian (it)", value: "it" },
+  { label: "Korean (ko)", value: "ko" },
+  { label: "Spanish (es)", value: "es" },
+  { label: "French (fr)", value: "fr" },
+  { label: "German (de)", value: "de" },
+  { label: "Chinese (zh)", value: "zh" },
 ];
 
-const NATIVE_LANG_OPTIONS: Array<{ code: string; label: string }> = [
-  { code: "zh-TW", label: "繁體中文 (zh-TW)" },
-  { code: "zh-CN", label: "简体中文 (zh-CN)" },
-  { code: "en", label: "English (en)" },
-  { code: "it", label: "Italiano (it)" },
-  { code: "ja", label: "日本語 (ja)" },
-  { code: "ko", label: "한국어 (ko)" },
-  { code: "fr", label: "Français (fr)" },
-  { code: "de", label: "Deutsch (de)" },
-  { code: "es", label: "Español (es)" },
+const STT_OPTIONS = [
+  // Google STT languageCode
+  { label: "Japanese (ja-JP)", value: "ja-JP" },
+  { label: "English (en-US)", value: "en-US" },
+  { label: "Italian (it-IT)", value: "it-IT" },
+  { label: "Korean (ko-KR)", value: "ko-KR" },
+  { label: "Spanish (es-ES)", value: "es-ES" },
+  { label: "French (fr-FR)", value: "fr-FR" },
+  { label: "German (de-DE)", value: "de-DE" },
+  { label: "Chinese (zh-TW)", value: "zh-TW" },
+  { label: "Chinese (zh-CN)", value: "zh-CN" },
 ];
 
-// Common STT language codes for Google STT
-const STT_LANG_OPTIONS: Array<{ code: string; label: string }> = [
-  { code: "ja-JP", label: "Japanese (ja-JP)" },
-  { code: "en-US", label: "English (en-US)" },
-  { code: "en-GB", label: "English UK (en-GB)" },
-  { code: "it-IT", label: "Italian (it-IT)" },
-  { code: "ko-KR", label: "Korean (ko-KR)" },
-  { code: "cmn-Hant-TW", label: "Chinese TW (cmn-Hant-TW)" },
-  { code: "cmn-Hans-CN", label: "Chinese CN (cmn-Hans-CN)" },
-  { code: "fr-FR", label: "French (fr-FR)" },
-  { code: "de-DE", label: "German (de-DE)" },
-  { code: "es-ES", label: "Spanish (es-ES)" },
+const NATIVE_OPTIONS = [
+  // Explanation language + subtitle target (Translate)
+  { label: "Traditional Chinese (zh-TW)", value: "zh-TW" },
+  { label: "English (en)", value: "en" },
+  { label: "Japanese (ja)", value: "ja" },
+  { label: "Italian (it)", value: "it" },
+  { label: "Korean (ko)", value: "ko" },
+  { label: "Spanish (es)", value: "es" },
+  { label: "French (fr)", value: "fr" },
+  { label: "German (de)", value: "de" },
 ];
 
 export default function App() {
-  // common params
+  // ===== Settings =====
   const [conversationId, setConversationId] = useState("demo1");
   const [persona, setPersona] = useState("Osaka izakaya owner");
 
   const [targetLanguage, setTargetLanguage] = useState("ja");
-  const [nativeLanguage, setNativeLanguage] = useState("en");
+  const [nativeLanguage, setNativeLanguage] = useState("zh-TW");
   const [sttLanguage, setSttLanguage] = useState("ja-JP");
-  const [subtitleTarget, setSubtitleTarget] = useState("en"); // subtitles target language
+  const [subtitleTarget, setSubtitleTarget] = useState("zh-TW");
 
-  // text mode
+  // ===== Text mode =====
   const [userText, setUserText] = useState("");
 
-  // output
+  // ===== Output / state =====
   const [loading, setLoading] = useState(false);
   const [resultText, setResultText] = useState<TurnTextResponse | null>(null);
   const [resultAudio, setResultAudio] = useState<TurnAudioResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // assistant audio player (replayable)
-  const [assistantAudioUrl, setAssistantAudioUrl] = useState<string>("");
-  const assistantAudioElRef = useRef<HTMLAudioElement | null>(null);
+  // ===== Conversation transcript =====
+  const [chat, setChat] = useState<ChatMsg[]>([]);
+  const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
-  // recorder state
+  // ===== Audio playback =====
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const [lastAssistantAudioBase64, setLastAssistantAudioBase64] = useState<string>("");
+
+  // ===== Recorder state =====
   const [recState, setRecState] = useState<"idle" | "recording" | "stopped">("idle");
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
 
   const canRecord = useMemo(() => typeof MediaRecorder !== "undefined", []);
 
-  // When target language changes, auto-set a reasonable STT default (user can still override)
   useEffect(() => {
-    const opt = TARGET_LANG_OPTIONS.find((o) => o.code === targetLanguage);
-    if (opt) setSttLanguage(opt.defaultStt);
-  }, [targetLanguage]);
+    if (!API_BASE) {
+      console.error("Missing VITE_API_BASE. Set it in Vercel Environment Variables.");
+      setError("Missing VITE_API_BASE. Please set it in Vercel env vars.");
+    }
+  }, []);
 
-  // Try autoplay when a new assistant audio URL arrives (keeps controls so user can replay)
   useEffect(() => {
-    if (!assistantAudioUrl) return;
-    const el = assistantAudioElRef.current;
-    if (!el) return;
-    el.currentTime = 0;
-    el.play().catch(() => {
-      // If autoplay is blocked, user can press play on controls
-    });
-  }, [assistantAudioUrl]);
+    // Auto-scroll transcript
+    transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chat]);
 
-  function setBase64Mp3ToPlayer(base64: string) {
-    if (!base64) return;
-    const url = "data:audio/mp3;base64," + base64;
-    setAssistantAudioUrl(url);
+  useEffect(() => {
+    // Cleanup on unmount
+    return () => {
+      try {
+        audioElRef.current?.pause();
+      } catch {}
+      try {
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+      } catch {}
+    };
+  }, []);
+
+  function ensureAudioEl() {
+    if (!audioElRef.current) audioElRef.current = new Audio();
+    return audioElRef.current;
   }
 
+  function playBase64Mp3(base64: string) {
+    if (!base64) return;
+    const audio = ensureAudioEl();
+    const url = "data:audio/mp3;base64," + base64;
+    audio.src = url;
+    audio.currentTime = 0;
+    audio.play().catch(() => {});
+  }
+
+  function replayLast() {
+    if (!lastAssistantAudioBase64) return;
+    playBase64Mp3(lastAssistantAudioBase64);
+  }
+
+  function addMsg(role: ChatMsg["role"], text: string) {
+    setChat((prev) => [...prev, { role, text }]);
+  }
+
+  // ===== API calls =====
   async function submitText() {
     setLoading(true);
     setError(null);
     setResultAudio(null);
     setResultText(null);
-    setAssistantAudioUrl("");
+
+    const text = userText.trim();
+    if (!text) {
+      setLoading(false);
+      return;
+    }
 
     try {
+      addMsg("user", text);
+
       const res = await fetch(`${API_BASE}/turn_text`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -130,7 +166,7 @@ export default function App() {
           target_language: targetLanguage,
           native_language: nativeLanguage,
           persona,
-          user_text: userText,
+          user_text: text,
         }),
       });
 
@@ -138,7 +174,11 @@ export default function App() {
       const data = (await res.json()) as TurnTextResponse;
 
       setResultText(data);
-      setBase64Mp3ToPlayer(data.assistant_audio_base64);
+      addMsg("assistant", data.assistant_reply);
+
+      setLastAssistantAudioBase64(data.assistant_audio_base64 || "");
+      playBase64Mp3(data.assistant_audio_base64);
+      setUserText("");
     } catch (e: any) {
       setError(e?.message ?? "Unknown error");
     } finally {
@@ -151,10 +191,11 @@ export default function App() {
     setResultAudio(null);
     setResultText(null);
     setRecordedBlob(null);
-    setAssistantAudioUrl("");
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
       const mr = new MediaRecorder(stream, {
         mimeType: MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
           ? "audio/webm;codecs=opus"
@@ -165,11 +206,15 @@ export default function App() {
       mr.ondataavailable = (ev) => {
         if (ev.data && ev.data.size > 0) chunksRef.current.push(ev.data);
       };
+
       mr.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
         setRecordedBlob(blob);
         setRecState("stopped");
+
+        // stop mic
         stream.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
       };
 
       mediaRecorderRef.current = mr;
@@ -192,7 +237,6 @@ export default function App() {
     setError(null);
     setResultAudio(null);
     setResultText(null);
-    setAssistantAudioUrl("");
 
     try {
       const fd = new FormData();
@@ -202,7 +246,7 @@ export default function App() {
       fd.append("target_language", targetLanguage);
       fd.append("native_language", nativeLanguage);
       fd.append("persona", persona);
-      fd.append("subtitle_target", subtitleTarget); // can be ""
+      fd.append("subtitle_target", subtitleTarget);
 
       const res = await fetch(`${API_BASE}/turn`, {
         method: "POST",
@@ -213,7 +257,16 @@ export default function App() {
       const data = (await res.json()) as TurnAudioResponse;
 
       setResultAudio(data);
-      setBase64Mp3ToPlayer(data.assistant_audio_base64);
+
+      // For transcript: user_text is the STT output (what user actually said)
+      addMsg("user", data.user_text);
+      addMsg("assistant", data.assistant_reply);
+
+      setLastAssistantAudioBase64(data.assistant_audio_base64 || "");
+      playBase64Mp3(data.assistant_audio_base64);
+
+      setRecordedBlob(null);
+      setRecState("idle");
     } catch (e: any) {
       setError(e?.message ?? "Unknown error");
     } finally {
@@ -221,37 +274,44 @@ export default function App() {
     }
   }
 
-  const activeResult = resultText ?? resultAudio;
+  function clearChat() {
+    setChat([]);
+    setResultText(null);
+    setResultAudio(null);
+    setError(null);
+    setLastAssistantAudioBase64("");
+  }
+
+  const latest = resultText ?? resultAudio;
 
   return (
-    <div style={{ padding: 24, fontFamily: "system-ui, sans-serif", maxWidth: 960 }}>
+    <div style={{ padding: 24, fontFamily: "system-ui, sans-serif", maxWidth: 980, margin: "0 auto" }}>
       <h1 style={{ margin: 0 }}>🗣️ Language Mirror (Tutor)</h1>
       <p style={{ opacity: 0.8, marginTop: 8 }}>
-        Text + Voice demo: STT (Google) → Gemini (Vertex AI) → ElevenLabs (TTS) + subtitles
+        Voice-first tutor: Google STT → Gemini (Vertex AI) → ElevenLabs (TTS) + subtitles
       </p>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: 16, marginTop: 16 }}>
+        {/* Settings */}
         <div style={{ border: "1px solid #333", borderRadius: 12, padding: 12 }}>
           <h3 style={{ marginTop: 0 }}>Settings</h3>
 
           <label>Conversation ID</label>
-          <input style={{ width: "100%" }} value={conversationId} onChange={(e) => setConversationId(e.target.value)} />
+          <input
+            style={{ width: "100%" }}
+            value={conversationId}
+            onChange={(e) => setConversationId(e.target.value)}
+          />
 
           <label style={{ display: "block", marginTop: 8 }}>Persona</label>
           <input style={{ width: "100%" }} value={persona} onChange={(e) => setPersona(e.target.value)} />
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
             <div>
               <label>Target language</label>
-              <select
-                style={{ width: "100%" }}
-                value={targetLanguage}
-                onChange={(e) => setTargetLanguage(e.target.value)}
-              >
-                {TARGET_LANG_OPTIONS.map((o) => (
-                  <option key={o.code} value={o.code}>
-                    {o.label}
-                  </option>
+              <select style={{ width: "100%" }} value={targetLanguage} onChange={(e) => setTargetLanguage(e.target.value)}>
+                {LANG_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
               <small style={{ opacity: 0.7 }}>Tutor speaks this language.</small>
@@ -259,29 +319,21 @@ export default function App() {
 
             <div>
               <label>Native language</label>
-              <select
-                style={{ width: "100%" }}
-                value={nativeLanguage}
-                onChange={(e) => setNativeLanguage(e.target.value)}
-              >
-                {NATIVE_LANG_OPTIONS.map((o) => (
-                  <option key={o.code} value={o.code}>
-                    {o.label}
-                  </option>
+              <select style={{ width: "100%" }} value={nativeLanguage} onChange={(e) => setNativeLanguage(e.target.value)}>
+                {NATIVE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
               <small style={{ opacity: 0.7 }}>Tips/explanations language.</small>
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
             <div>
               <label>STT language</label>
               <select style={{ width: "100%" }} value={sttLanguage} onChange={(e) => setSttLanguage(e.target.value)}>
-                {STT_LANG_OPTIONS.map((o) => (
-                  <option key={o.code} value={o.code}>
-                    {o.label}
-                  </option>
+                {STT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
               <small style={{ opacity: 0.7 }}>Google Speech-to-Text languageCode.</small>
@@ -289,52 +341,63 @@ export default function App() {
 
             <div>
               <label>Subtitle target</label>
-              <select
-                style={{ width: "100%" }}
-                value={subtitleTarget}
-                onChange={(e) => setSubtitleTarget(e.target.value)}
-              >
-                {NATIVE_LANG_OPTIONS.map((o) => (
-                  <option key={o.code} value={o.code}>
-                    {o.label}
-                  </option>
+              <select style={{ width: "100%" }} value={subtitleTarget} onChange={(e) => setSubtitleTarget(e.target.value)}>
+                {NATIVE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
               <small style={{ opacity: 0.7 }}>Subtitle translation language.</small>
             </div>
           </div>
+
+          <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button onClick={replayLast} disabled={!lastAssistantAudioBase64} style={{ padding: "8px 12px" }}>
+              🔊 Replay
+            </button>
+            <button onClick={clearChat} style={{ padding: "8px 12px" }}>
+              🧹 Clear chat
+            </button>
+          </div>
+
+          <div style={{ marginTop: 10, opacity: 0.75, fontSize: 12 }}>
+            API: {API_BASE || "(missing VITE_API_BASE)"}
+          </div>
         </div>
 
+        {/* Interaction */}
         <div style={{ border: "1px solid #333", borderRadius: 12, padding: 12 }}>
           <h3 style={{ marginTop: 0 }}>Text mode</h3>
           <textarea
-            rows={4}
+            rows={3}
             style={{ width: "100%", fontSize: 16 }}
             placeholder="Enter a sentence (in target language)"
             value={userText}
             onChange={(e) => setUserText(e.target.value)}
           />
-          <button
-            onClick={submitText}
-            disabled={loading || !userText.trim()}
-            style={{ marginTop: 10, padding: "8px 16px", fontSize: 16 }}
-          >
-            {loading ? "Processing..." : "Submit text"}
-          </button>
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button
+              onClick={submitText}
+              disabled={loading || !userText.trim() || !API_BASE}
+              style={{ padding: "8px 16px", fontSize: 16 }}
+            >
+              {loading ? "Processing..." : "Submit text"}
+            </button>
+          </div>
 
           <hr style={{ margin: "16px 0" }} />
 
           <h3 style={{ marginTop: 0 }}>Voice mode</h3>
-          {!canRecord && <div style={{ color: "red" }}>MediaRecorder not supported in this browser.</div>}
+          {!canRecord && <div style={{ color: "salmon" }}>MediaRecorder not supported in this browser.</div>}
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <button
               onClick={startRecording}
-              disabled={loading || recState === "recording"}
+              disabled={loading || recState === "recording" || !API_BASE}
               style={{ padding: "8px 16px" }}
             >
               🎙 Start
             </button>
+
             <button
               onClick={stopRecording}
               disabled={loading || recState !== "recording"}
@@ -342,13 +405,15 @@ export default function App() {
             >
               ⏹ Stop
             </button>
+
             <button
               onClick={submitRecording}
-              disabled={loading || !recordedBlob}
+              disabled={loading || !recordedBlob || !API_BASE}
               style={{ padding: "8px 16px" }}
             >
-              🚀 Send to teach
+              🚀 Send
             </button>
+
             <span style={{ opacity: 0.8 }}>
               {recState === "recording" ? "Recording..." : recordedBlob ? "Recorded ✔" : "Idle"}
             </span>
@@ -357,59 +422,78 @@ export default function App() {
           {recordedBlob && (
             <audio controls style={{ marginTop: 10, width: "100%" }} src={URL.createObjectURL(recordedBlob)} />
           )}
+
+          {/* Result (latest turn details) */}
+          {latest && (
+            <div style={{ marginTop: 14, border: "1px solid #2a2a2a", borderRadius: 12, padding: 12 }}>
+              <h3 style={{ margin: "0 0 10px 0" }}>Latest turn</h3>
+
+              {resultAudio?.user_text && (
+                <>
+                  <div style={{ fontWeight: 700 }}>🧾 STT user_text</div>
+                  <div style={{ marginBottom: 10 }}>{resultAudio.user_text}</div>
+                </>
+              )}
+
+              {resultAudio?.subtitle_native && (
+                <>
+                  <div style={{ fontWeight: 700 }}>🪄 Subtitles (native)</div>
+                  <div style={{ marginBottom: 10 }}>{resultAudio.subtitle_native}</div>
+                </>
+              )}
+
+              <div style={{ fontWeight: 700 }}>✍️ corrected_user</div>
+              <div style={{ marginBottom: 10 }}>{latest.corrected_user}</div>
+
+              <div style={{ fontWeight: 700 }}>📘 tips_native</div>
+              <div style={{ marginBottom: 10, whiteSpace: "pre-wrap" }}>{latest.tips_native}</div>
+
+              <div style={{ fontWeight: 700 }}>🤖 assistant_reply</div>
+              <div style={{ marginBottom: 10 }}>{latest.assistant_reply}</div>
+
+              <div style={{ fontWeight: 700 }}>👉 follow_up_question</div>
+              <div>{latest.follow_up_question}</div>
+            </div>
+          )}
+
+          {error && (
+            <pre style={{ color: "salmon", marginTop: 12, whiteSpace: "pre-wrap" }}>{error}</pre>
+          )}
         </div>
       </div>
 
-      {error && (
-        <pre style={{ color: "salmon", marginTop: 16, whiteSpace: "pre-wrap" }}>{error}</pre>
-      )}
-
-      {activeResult && (
-        <div style={{ marginTop: 18, border: "1px solid #333", borderRadius: 12, padding: 12 }}>
-          <h2 style={{ marginTop: 0 }}>Result</h2>
-
-          {resultAudio?.user_text && (
-            <>
-              <h4>🧾 STT user_text</h4>
-              <p>{resultAudio.user_text}</p>
-            </>
-          )}
-
-          {resultAudio?.subtitle_native && (
-            <>
-              <h4>🪄 Subtitles</h4>
-              <p>{resultAudio.subtitle_native}</p>
-            </>
-          )}
-
-          <h4>✍️ corrected_user</h4>
-          <p>{activeResult.corrected_user}</p>
-
-          <h4>📘 tips_native</h4>
-          <p style={{ whiteSpace: "pre-wrap" }}>{activeResult.tips_native}</p>
-
-          <h4>🤖 assistant_reply</h4>
-          <p>{activeResult.assistant_reply}</p>
-
-          <h4>👉 follow_up_question</h4>
-          <p>{activeResult.follow_up_question}</p>
-
-          {assistantAudioUrl && (
-            <div style={{ marginTop: 12 }}>
-              <h4>🔊 Assistant audio (replayable)</h4>
-              <audio
-                ref={assistantAudioElRef}
-                controls
-                style={{ width: "100%" }}
-                src={assistantAudioUrl}
-              />
-              <small style={{ opacity: 0.7 }}>
-                If autoplay is blocked, press play manually.
-              </small>
-            </div>
-          )}
+      {/* Transcript */}
+      <div style={{ marginTop: 16, border: "1px solid #333", borderRadius: 12, padding: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+          <h2 style={{ margin: 0 }}>Conversation</h2>
+          <div style={{ opacity: 0.7, fontSize: 12 }}>Tip: demo 時連續講 3 輪很像 voice agent</div>
         </div>
-      )}
+
+        <div style={{ marginTop: 10, maxHeight: 320, overflow: "auto", paddingRight: 6 }}>
+          {chat.length === 0 ? (
+            <div style={{ opacity: 0.7 }}>No messages yet. Try Voice mode and send a turn.</div>
+          ) : (
+            chat.map((m, idx) => (
+              <div
+                key={idx}
+                style={{
+                  marginBottom: 10,
+                  padding: 10,
+                  borderRadius: 12,
+                  border: "1px solid #2a2a2a",
+                  background: m.role === "assistant" ? "rgba(255,255,255,0.03)" : "transparent",
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                  {m.role === "user" ? "🧑 You" : "🤖 Tutor"}
+                </div>
+                <div style={{ whiteSpace: "pre-wrap" }}>{m.text}</div>
+              </div>
+            ))
+          )}
+          <div ref={transcriptEndRef} />
+        </div>
+      </div>
     </div>
   );
 }
