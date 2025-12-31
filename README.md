@@ -1,167 +1,288 @@
-# Language Mirror (Tutor) — Voice-first AI Language Tutor
+# Language Mirror — Voice-First AI Language Tutor
 
-A voice-driven language tutor that lets users speak naturally and receive:
-- Speech-to-text (Google Cloud Speech-to-Text)
-- Corrections + coaching + role-play replies (Gemini on Vertex AI)
-- Natural voice responses (ElevenLabs TTS)
-- Optional translated subtitles (Google Cloud Translate)
+An immersive, voice-driven language learning app that combines **Google Cloud AI**, **Vertex AI (Gemini)**, and **ElevenLabs** to create natural, conversational practice sessions.
 
-**Live demo (Frontend):** https://language-mirror-gemini.vercel.app/  
-**API (Backend):** https://language-mirror-api-99706145314.us-central1.run.app
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://language-mirror-gemini.vercel.app/)
+[![API Status](https://img.shields.io/badge/API-online-blue)](https://language-mirror-api-99706145314.us-central1.run.app/health)
 
----
+## 🎯 What It Does
 
-## What it does
+Language Mirror lets users **speak naturally** in their target language and instantly receive:
 
-Language Mirror is **voice-first**: users speak, and the app responds with:
-- A transcript (STT)
-- A corrected version of the user’s sentence
-- Tips/explanations in the user’s native language
-- An in-character assistant reply (persona-based roleplay)
-- Spoken audio reply (ElevenLabs)
+- 📝 **Real-time transcription** (Google Cloud Speech-to-Text)
+- ✏️ **Corrections & explanations** in your native language
+- 🎭 **Persona-based roleplay responses** (Gemini on Vertex AI)
+- 🔊 **Natural voice replies** (ElevenLabs TTS)
+- 🌐 **Optional translated subtitles** (Google Cloud Translate)
 
----
-
-## Architecture
-
-Browser (React/Vite)
-- Records audio (webm/opus)
-- Sends to API `/turn` (multipart form)
-- Displays: transcript, subtitles, corrections, tips, assistant reply
-- Plays ElevenLabs audio (mp3)
-
-Backend (Node + Hono on Google Cloud Run)
-1. Convert webm/opus → wav 16k mono (ffmpeg)
-2. Google Cloud Speech-to-Text → `user_text`
-3. (Optional) Google Cloud Translate → `subtitle_native`
-4. Gemini (Vertex AI) → JSON: `corrected_user`, `tips_native`, `assistant_reply`, `follow_up_question`
-5. ElevenLabs TTS → `assistant_audio_base64`
+**Example Flow:**
+```
+You say: "昨日 私は 買い物 行きました"
+         ↓
+App transcribes → Corrects → Explains → Responds in character
+         ↓
+"おお、昨日買い物行ったんやね！ええ也見見つかったんか？" (with audio)
+```
 
 ---
 
-## Features
+## 🏗️ Architecture
 
-- ✅ Text mode (fast iteration) via `/turn_text`
-- ✅ Voice mode (speech input) via `/turn`
-- ✅ Persona / role-play style tutoring (e.g. Osaka izakaya owner)
-- ✅ Native-language explanations + optional subtitles
-- ✅ Conversation history per `conversation_id`
+```
+┌─────────────────┐
+│  Browser (React) │
+│  - Records audio │
+│  - Plays replies │
+└────────┬────────┘
+         │ webm/opus audio
+         ↓
+┌─────────────────────────────────┐
+│  Backend (Node + Hono)           │
+│  1. Convert → wav (ffmpeg)      │
+│  2. STT → text                  │
+│  3. Translate → subtitle        │
+│  4. Gemini → corrections/reply  │
+│  5. ElevenLabs → audio          │
+└─────────────────────────────────┘
+         │
+         ↓
+    JSON + mp3 audio
+```
+
+### Tech Stack
+
+| Component | Technology |
+|-----------|-----------|
+| **Frontend** | React + Vite |
+| **Backend** | Node.js + Hono (Cloud Run) |
+| **Speech-to-Text** | Google Cloud Speech-to-Text |
+| **AI Tutor** | Gemini 2.5 Flash (Vertex AI) |
+| **Text-to-Speech** | ElevenLabs |
+| **Translation** | Google Cloud Translate |
+| **Hosting** | Google Cloud Run + Vercel |
 
 ---
 
-## Repo structure
+## ✨ Features
 
-.
-├── src/ # backend (Hono + services)
-├── web/ # frontend (Vite + React)
-└── Dockerfile # Cloud Run container
-
-yaml
-Copy code
+- ✅ **Voice Mode** — Speak directly to the tutor via `/turn`
+- ✅ **Text Mode** — Quick testing via `/turn_text`
+- ✅ **Persona-Based Roleplay** — Practice with different characters (e.g., "Osaka izakaya owner")
+- ✅ **Native Language Tips** — Get explanations in your language
+- ✅ **Conversation History** — Maintains context per `conversation_id`
+- ✅ **Real-Time Subtitles** — Optional translation for clarity
 
 ---
 
-## Local development
+## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 18+ (recommended)
-- Google Cloud project with:
-  - Vertex AI enabled
-  - Speech-to-Text enabled
-  - Translate enabled (optional)
-- ElevenLabs API key + voice id
-- ffmpeg installed locally (optional; required in Cloud Run container)
 
-### Backend env vars
+- **Node.js 18+**
+- **Google Cloud Project** with enabled APIs:
+  - Vertex AI
+  - Speech-to-Text
+  - Translate (optional)
+- **ElevenLabs API Key** ([Get one here](https://elevenlabs.io))
+- **ffmpeg** (for audio conversion)
 
-Create a `.env` in repo root:
-
-GOOGLE_CLOUD_PROJECT=YOUR_PROJECT_ID
-GOOGLE_CLOUD_LOCATION=us-central1
-
-ELEVENLABS_API_KEY=YOUR_ELEVENLABS_KEY
-ELEVENLABS_VOICE_ID=YOUR_VOICE_ID
-ELEVENLABS_MODEL_ID=eleven_multilingual_v2
-PORT=3000
-
-perl
-Copy code
-
-### Run backend locally
+### 1. Clone & Install
 
 ```bash
+git clone https://github.com/yourusername/language-mirror-gemini.git
+cd language-mirror-gemini
 npm install
-npm run dev
-Health check:
+```
 
-bash
-Copy code
+### 2. Configure Environment
+
+Create `.env` in the project root:
+
+```bash
+# Google Cloud
+GOOGLE_CLOUD_PROJECT=your-project-id
+GOOGLE_CLOUD_LOCATION=us-central1
+
+# ElevenLabs
+ELEVENLABS_API_KEY=your-elevenlabs-key
+ELEVENLABS_VOICE_ID=your-voice-id
+ELEVENLABS_MODEL_ID=eleven_multilingual_v2
+
+# Server
+PORT=3000
+```
+
+### 3. Run Backend
+
+```bash
+npm run dev
+```
+
+**Test health endpoint:**
+```bash
 curl http://127.0.0.1:3000/health
-Run frontend locally
-bash
-Copy code
+```
+
+### 4. Run Frontend
+
+```bash
 cd web
 npm install
 npm run dev -- --host
-Set the frontend API base:
+```
 
-Local: use port-forwarding to http://127.0.0.1:3000
+**Configure API endpoint** in `web/.env`:
+```bash
+# Local development
+VITE_API_BASE=http://127.0.0.1:3000
 
-Hosted: set VITE_API_BASE to your Cloud Run URL
+# Production
+VITE_API_BASE=https://language-mirror-api-99706145314.us-central1.run.app
+```
 
-Deployment
-Backend (Cloud Run)
-bash
-Copy code
+---
+
+## 📡 API Reference
+
+### `POST /turn_text`
+Text-only mode (no audio input)
+
+**Request:**
+```json
+{
+  "conversation_id": "demo1",
+  "target_language": "ja",
+  "native_language": "zh-TW",
+  "persona": "Osaka izakaya owner",
+  "user_text": "昨日買い物に行きました"
+}
+```
+
+**Response:**
+```json
+{
+  "conversation_id": "demo1",
+  "corrected_user": "昨日、買い物に行ったんやね。",
+  "tips_native": "助詞「に」表示動作的方向...",
+  "assistant_reply": "おお、昨日買い物行ったんやね！",
+  "follow_up_question": "何買ったん？",
+  "assistant_audio_base64": "SUQz..."
+}
+```
+
+### `POST /turn`
+Voice mode with audio input
+
+**Request:** `multipart/form-data`
+```
+audio: <webm file>
+conversation_id: "demo1"
+stt_language: "ja-JP"
+target_language: "ja"
+native_language: "zh-TW"
+persona: "Osaka izakaya owner"
+subtitle_target: "native" (optional)
+```
+
+**Response:** Same as `/turn_text` plus:
+```json
+{
+  "user_text": "昨日買い物に行きました",
+  "subtitle_native": "昨天我去購物了",
+  ...
+}
+```
+
+---
+
+## 🌐 Deployment
+
+### Backend (Google Cloud Run)
+
+```bash
 gcloud run deploy language-mirror-api \
   --source . \
   --allow-unauthenticated \
-  --region us-central1
-Verify:
+  --region us-central1 \
+  --set-env-vars GOOGLE_CLOUD_PROJECT=your-project-id,ELEVENLABS_API_KEY=your-key
+```
 
-bash
-Copy code
-curl https://language-mirror-api-99706145314.us-central1.run.app/health
-Frontend (Vercel)
-Import this GitHub repo in Vercel
+### Frontend (Vercel)
 
-Set Root Directory = web
+1. Import your GitHub repo in Vercel
+2. Set **Root Directory** = `web`
+3. Add environment variable:
+   ```
+   VITE_API_BASE=https://language-mirror-api-99706145314.us-central1.run.app
+   ```
+4. Deploy 🚀
 
-Add env var:
+---
 
-VITE_API_BASE = https://language-mirror-api-99706145314.us-central1.run.app
+## 📁 Project Structure
 
-Deploy
+```
+language-mirror-gemini/
+├── src/
+│   ├── index.ts              # Main server (Hono)
+│   └── services/
+│       ├── gemini.ts         # Vertex AI integration
+│       ├── eleven.ts         # ElevenLabs TTS
+│       ├── speech.ts         # Google STT
+│       └── translate.ts      # Google Translate
+├── web/                      # Frontend (React + Vite)
+│   ├── src/
+│   │   ├── App.tsx
+│   │   └── components/
+│   └── package.json
+├── Dockerfile                # Cloud Run container
+├── package.json
+└── .env.example
+```
 
-API
-POST /turn_text
-JSON body:
+---
 
-json
-Copy code
-{
-  "conversation_id":"demo1",
-  "target_language":"ja",
-  "native_language":"zh-TW",
-  "persona":"Osaka izakaya owner",
-  "user_text":"昨日買い物に行きました"
-}
-POST /turn
-multipart/form-data:
+## 🎓 Use Cases
 
-audio: webm file (MediaRecorder output)
+- **Language Learning** — Practice conversation with AI tutors
+- **Pronunciation Practice** — Get instant feedback on your speech
+- **Roleplay Scenarios** — Practice real-world situations (ordering food, shopping, etc.)
+- **Grammar Correction** — Learn from mistakes with native-language explanations
 
-conversation_id, stt_language, target_language, native_language, persona, subtitle_target
+---
 
-Returns:
+## 🤝 Contributing
 
-user_text, subtitle_native
+Contributions are welcome! Please:
 
-corrected_user, tips_native
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-assistant_reply, follow_up_question
+---
 
-assistant_audio_base64 (mp3)
+## 📝 License
 
-License
-MIT (see LICENSE)
+MIT License - see [LICENSE](LICENSE) file for details
+
+---
+
+## 🙏 Acknowledgments
+
+- **Google Cloud** for Speech-to-Text, Vertex AI, and Translate APIs
+- **ElevenLabs** for high-quality multilingual TTS
+- **Anthropic** for inspiration from conversational AI patterns
+
+---
+
+## 📞 Support
+
+- **Live Demo**: [language-mirror-gemini.vercel.app](https://language-mirror-gemini.vercel.app/)
+- **Issues**: [GitHub Issues](https://github.com/yourusername/language-mirror-gemini/issues)
+- **API Health**: [Check Status](https://language-mirror-api-99706145314.us-central1.run.app/health)
+
+---
+
+**Built with ❤️ for language learners worldwide**
