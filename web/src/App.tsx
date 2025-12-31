@@ -22,8 +22,8 @@ type ChatMsg = {
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string) || "";
 
+// ===== Language options =====
 const LANG_OPTIONS = [
-  // Tutor target language (Gemini hint)
   { label: "Japanese (ja)", value: "ja" },
   { label: "English (en)", value: "en" },
   { label: "Italian (it)", value: "it" },
@@ -35,7 +35,6 @@ const LANG_OPTIONS = [
 ];
 
 const STT_OPTIONS = [
-  // Google STT languageCode
   { label: "Japanese (ja-JP)", value: "ja-JP" },
   { label: "English (en-US)", value: "en-US" },
   { label: "Italian (it-IT)", value: "it-IT" },
@@ -48,7 +47,6 @@ const STT_OPTIONS = [
 ];
 
 const NATIVE_OPTIONS = [
-  // Explanation language + subtitle target (Translate)
   { label: "Traditional Chinese (zh-TW)", value: "zh-TW" },
   { label: "English (en)", value: "en" },
   { label: "Japanese (ja)", value: "ja" },
@@ -59,10 +57,23 @@ const NATIVE_OPTIONS = [
   { label: "German (de)", value: "de" },
 ];
 
+// ===== Persona presets =====
+const PERSONA_PRESETS = [
+  { label: "Osaka izakaya owner (fun)", value: "Osaka izakaya owner" },
+  { label: "Friendly language tutor", value: "Friendly language tutor" },
+  { label: "Business meeting coach", value: "Business meeting coach" },
+  { label: "Travel buddy", value: "Travel buddy" },
+  { label: "Strict grammar teacher", value: "Strict grammar teacher" },
+];
+
 export default function App() {
   // ===== Settings =====
   const [conversationId, setConversationId] = useState("demo1");
-  const [persona, setPersona] = useState("Osaka izakaya owner");
+
+  // persona: preset + optional custom override
+  const [personaPreset, setPersonaPreset] = useState(PERSONA_PRESETS[0].value);
+  const [personaCustom, setPersonaCustom] = useState("");
+  const persona = personaCustom.trim() ? personaCustom.trim() : personaPreset;
 
   const [targetLanguage, setTargetLanguage] = useState("ja");
   const [nativeLanguage, setNativeLanguage] = useState("zh-TW");
@@ -103,12 +114,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Auto-scroll transcript
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat]);
 
   useEffect(() => {
-    // Cleanup on unmount
     return () => {
       try {
         audioElRef.current?.pause();
@@ -212,7 +221,6 @@ export default function App() {
         setRecordedBlob(blob);
         setRecState("stopped");
 
-        // stop mic
         stream.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       };
@@ -257,8 +265,6 @@ export default function App() {
       const data = (await res.json()) as TurnAudioResponse;
 
       setResultAudio(data);
-
-      // For transcript: user_text is the STT output (what user actually said)
       addMsg("user", data.user_text);
       addMsg("assistant", data.assistant_reply);
 
@@ -274,12 +280,25 @@ export default function App() {
     }
   }
 
-  function clearChat() {
+  async function clearChat() {
     setChat([]);
     setResultText(null);
     setResultAudio(null);
     setError(null);
     setLastAssistantAudioBase64("");
+
+    // Optional: also clear backend memory for this conversation id
+    if (API_BASE) {
+      try {
+        await fetch(`${API_BASE}/clear`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversation_id: conversationId }),
+        });
+      } catch {
+        // ignore
+      }
+    }
   }
 
   const latest = resultText ?? resultAudio;
@@ -297,21 +316,35 @@ export default function App() {
           <h3 style={{ marginTop: 0 }}>Settings</h3>
 
           <label>Conversation ID</label>
-          <input
-            style={{ width: "100%" }}
-            value={conversationId}
-            onChange={(e) => setConversationId(e.target.value)}
-          />
+          <input style={{ width: "100%" }} value={conversationId} onChange={(e) => setConversationId(e.target.value)} />
 
+          {/* Persona: preset + custom override */}
           <label style={{ display: "block", marginTop: 8 }}>Persona</label>
-          <input style={{ width: "100%" }} value={persona} onChange={(e) => setPersona(e.target.value)} />
+          <select style={{ width: "100%" }} value={personaPreset} onChange={(e) => setPersonaPreset(e.target.value)}>
+            {PERSONA_PRESETS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <input
+            style={{ width: "100%", marginTop: 6 }}
+            placeholder="(optional) custom persona overrides dropdown..."
+            value={personaCustom}
+            onChange={(e) => setPersonaCustom(e.target.value)}
+          />
+          <small style={{ opacity: 0.7 }}>
+            Active persona: <b>{persona}</b>
+          </small>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
             <div>
               <label>Target language</label>
               <select style={{ width: "100%" }} value={targetLanguage} onChange={(e) => setTargetLanguage(e.target.value)}>
                 {LANG_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
                 ))}
               </select>
               <small style={{ opacity: 0.7 }}>Tutor speaks this language.</small>
@@ -321,7 +354,9 @@ export default function App() {
               <label>Native language</label>
               <select style={{ width: "100%" }} value={nativeLanguage} onChange={(e) => setNativeLanguage(e.target.value)}>
                 {NATIVE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
                 ))}
               </select>
               <small style={{ opacity: 0.7 }}>Tips/explanations language.</small>
@@ -333,7 +368,9 @@ export default function App() {
               <label>STT language</label>
               <select style={{ width: "100%" }} value={sttLanguage} onChange={(e) => setSttLanguage(e.target.value)}>
                 {STT_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
                 ))}
               </select>
               <small style={{ opacity: 0.7 }}>Google Speech-to-Text languageCode.</small>
@@ -343,7 +380,9 @@ export default function App() {
               <label>Subtitle target</label>
               <select style={{ width: "100%" }} value={subtitleTarget} onChange={(e) => setSubtitleTarget(e.target.value)}>
                 {NATIVE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
                 ))}
               </select>
               <small style={{ opacity: 0.7 }}>Subtitle translation language.</small>
@@ -378,7 +417,7 @@ export default function App() {
             <button
               onClick={submitText}
               disabled={loading || !userText.trim() || !API_BASE}
-              style={{ padding: "8px 16px", fontSize: 16 }}
+              style={{ marginTop: 0, padding: "8px 16px", fontSize: 16 }}
             >
               {loading ? "Processing..." : "Submit text"}
             </button>
@@ -390,27 +429,15 @@ export default function App() {
           {!canRecord && <div style={{ color: "salmon" }}>MediaRecorder not supported in this browser.</div>}
 
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <button
-              onClick={startRecording}
-              disabled={loading || recState === "recording" || !API_BASE}
-              style={{ padding: "8px 16px" }}
-            >
+            <button onClick={startRecording} disabled={loading || recState === "recording" || !API_BASE} style={{ padding: "8px 16px" }}>
               🎙 Start
             </button>
 
-            <button
-              onClick={stopRecording}
-              disabled={loading || recState !== "recording"}
-              style={{ padding: "8px 16px" }}
-            >
+            <button onClick={stopRecording} disabled={loading || recState !== "recording"} style={{ padding: "8px 16px" }}>
               ⏹ Stop
             </button>
 
-            <button
-              onClick={submitRecording}
-              disabled={loading || !recordedBlob || !API_BASE}
-              style={{ padding: "8px 16px" }}
-            >
+            <button onClick={submitRecording} disabled={loading || !recordedBlob || !API_BASE} style={{ padding: "8px 16px" }}>
               🚀 Send
             </button>
 
@@ -419,11 +446,8 @@ export default function App() {
             </span>
           </div>
 
-          {recordedBlob && (
-            <audio controls style={{ marginTop: 10, width: "100%" }} src={URL.createObjectURL(recordedBlob)} />
-          )}
+          {recordedBlob && <audio controls style={{ marginTop: 10, width: "100%" }} src={URL.createObjectURL(recordedBlob)} />}
 
-          {/* Result (latest turn details) */}
           {latest && (
             <div style={{ marginTop: 14, border: "1px solid #2a2a2a", borderRadius: 12, padding: 12 }}>
               <h3 style={{ margin: "0 0 10px 0" }}>Latest turn</h3>
@@ -456,9 +480,7 @@ export default function App() {
             </div>
           )}
 
-          {error && (
-            <pre style={{ color: "salmon", marginTop: 12, whiteSpace: "pre-wrap" }}>{error}</pre>
-          )}
+          {error && <pre style={{ color: "salmon", marginTop: 12, whiteSpace: "pre-wrap" }}>{error}</pre>}
         </div>
       </div>
 
@@ -484,9 +506,7 @@ export default function App() {
                   background: m.role === "assistant" ? "rgba(255,255,255,0.03)" : "transparent",
                 }}
               >
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>
-                  {m.role === "user" ? "🧑 You" : "🤖 Tutor"}
-                </div>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>{m.role === "user" ? "🧑 You" : "🤖 Tutor"}</div>
                 <div style={{ whiteSpace: "pre-wrap" }}>{m.text}</div>
               </div>
             ))
