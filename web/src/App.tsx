@@ -15,7 +15,7 @@ type TurnAudioResponse = TurnTextResponse & {
   subtitle_native: string;
 };
 
-// API base auto follows the page hostname (works for VM / LAN access)
+// API base auto follows the page hostname
 const API_BASE = import.meta.env.VITE_API_BASE as string;
 
 if (!API_BASE) {
